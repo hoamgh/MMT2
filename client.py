@@ -1,3 +1,4 @@
+
 import socket
 import json
 import os
@@ -9,7 +10,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 
 # Configuration
-HOST = '192.168.2.66'
+HOST = '127.0.0.1'
 PORT = 65432
 BUFFER_SIZE = 4096
 is_running = True
@@ -24,7 +25,7 @@ signal.signal(signal.SIGINT, signal_handler)
 def create_output_directory():
     if not os.path.exists('output'):
         os.makedirs('output')
-
+    print("Output directory is located at:", os.path.abspath('output'))
 def request_file_list(s):
     print("Requesting file list...")
     s.sendall("LIST".encode('utf-8'))
