@@ -141,7 +141,6 @@ def main():
             return
         start_time = time.time()
         last_processed_index = get_last_position()
-        downloaded_files = set()  # Tạo bộ để lưu các file đã tải
         while is_running:
             files = request_file_list(s)
             if not files:
@@ -152,17 +151,16 @@ def main():
             append_filenames_to_input()
             current_time = time.time()
             elapsed_time = current_time - start_time
-            if elapsed_time >= 20:
+            if elapsed_time >= 10:
                 input_file_names = read_filenames_from_input()
                 files_to_download = input_file_names[last_processed_index:]  # Chỉ xử lý các file mới
                 for file_name in files_to_download:
-                    if file_name in files and file_name not in downloaded_files:
+                    if file_name in files:
                         download_file(s, file_name)
-                        downloaded_files.add(file_name)  # Thêm file vào bộ (set) file đã tải
                         last_processed_index += 1
                         set_last_position(last_processed_index)
                     else:
-                        print(f"File {file_name} does not exist on the server or already downloaded. Skipping.")
+                        print(f"File {file_name} does not exist on the server. Skipping.")
                 start_time = time.time()  # Reset thời gian bắt đầu
             print("Waiting for new files to be added...")
 
