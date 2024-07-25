@@ -8,7 +8,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 
 # Server Configuration
-HOST = '192.168.2.66'
+HOST = '192.168.1.135'
 PORT = 65432
 BUFFER_SIZE = 4096
 
@@ -33,12 +33,14 @@ def get_file_size(file_path):
     return os.path.getsize(file_path)
 
 def update_files_dict():
-    """Update the FILES dictionary with actual file sizes."""
+    """Update the FILES dictionary with actual file sizes in MB."""
     files_dict = {}
     for filename in FILES:
         file_path = os.path.join(FILE_DIR, filename)
         if os.path.exists(file_path):
-            files_dict[filename] = get_file_size(file_path)
+            file_size_bytes = get_file_size(file_path)
+            file_size_mb = file_size_bytes / (1024 * 1024)  # Convert bytes to MB
+            files_dict[filename] = round(file_size_mb, 2)  # Round to 2 decimal places
         else:
             logging.warning(f"File {filename} not found in {FILE_DIR}.")
     return files_dict
@@ -57,6 +59,7 @@ def send_file(conn, file_path):
     except IOError as e:
         logging.error(f"Failed to read file: {e}")
         conn.sendall(b"Failed to send file")
+
 def handle_client(conn, addr):
     logging.info(f"Connected by {addr}")
 
@@ -73,7 +76,7 @@ def handle_client(conn, addr):
             conn.sendall(data_to_send)
         else:
             filename = secure_filename(data.strip())
-            if filename in files_with_sizes:
+            if filename in update_files_dict():
                 file_path = os.path.join(FILE_DIR, filename)
                 if os.path.exists(file_path):
                     try:
@@ -89,16 +92,16 @@ def handle_client(conn, addr):
 
     conn.close()
     logging.info(f"Connection closed for {addr}")
+
 def start_server():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         try:
             s.bind((HOST, PORT))
-            s.listen()
+            s.listen(1)  # Listen for only one connection at a time
             logging.info(f"Server listening on {HOST}:{PORT}")
             while True:
                 conn, addr = s.accept()
-                with conn:
-                    handle_client(conn, addr)
+                handle_client(conn, addr)
         except socket.error as e:
             logging.error(f"Socket error: {e}")
 
