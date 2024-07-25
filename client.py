@@ -10,7 +10,7 @@ import time
 logging.basicConfig(level=logging.INFO)
 
 # Configuration
-HOST = '127.0.0.1'
+HOST = '192.168.1.135'
 PORT = 65432
 BUFFER_SIZE = 4096
 is_running = True
@@ -61,6 +61,8 @@ def request_file_list(s):
         logging.info(f"Received data: {data}")
         data = data.decode('utf-8')
         files = json.loads(data)
+        # Convert file sizes from bytes to MB
+        files = {file: round(size, 2) for file, size in files.items()}
         return files
     except (ValueError, json.JSONDecodeError) as e:
         print(f"Failed to decode the file list: {e}")
@@ -147,7 +149,7 @@ def main():
                 continue
             print("Available files (approximate sizes):")
             for file, size in files.items():
-                print(f"{file} - {size} bytes")
+                print(f"{file} - {size} MB")
             append_filenames_to_input()
             current_time = time.time()
             elapsed_time = current_time - start_time
