@@ -3,12 +3,13 @@ import json
 import os
 import struct
 import logging
+import threading
 
 # Setup basic logging
 logging.basicConfig(level=logging.INFO)
 
 # Server Configuration
-HOST = '192.168.1.135'
+HOST = '10.124.9.148'
 PORT = 65432
 BUFFER_SIZE = 4096
 
@@ -76,7 +77,7 @@ def handle_client(conn, addr):
             conn.sendall(data_to_send)
         else:
             filename = secure_filename(data.strip())
-            if filename in update_files_dict():
+            if filename in files_with_sizes:
                 file_path = os.path.join(FILE_DIR, filename)
                 if os.path.exists(file_path):
                     try:
@@ -97,11 +98,12 @@ def start_server():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         try:
             s.bind((HOST, PORT))
-            s.listen(1)  # Listen for only one connection at a time
+            s.listen()
             logging.info(f"Server listening on {HOST}:{PORT}")
             while True:
                 conn, addr = s.accept()
-                handle_client(conn, addr)
+                client_thread = threading.Thread(target=handle_client, args=(conn, addr))
+                client_thread.start()
         except socket.error as e:
             logging.error(f"Socket error: {e}")
 
