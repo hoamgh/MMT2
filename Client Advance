@@ -150,6 +150,10 @@ class DownloadThread(threading.Thread):
 
 def start_client():
     """Start the client to download files from the server."""
+    # Ensure last_position.txt exists
+    if not os.path.exists('last_position.txt'):
+        set_last_position(0)
+
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         try:
             s.connect((HOST, PORT))
