@@ -4,6 +4,7 @@ import os
 import logging
 import threading
 import sys
+import time
 
 # Setup basic logging
 logging.basicConfig(level=logging.INFO)
@@ -115,8 +116,13 @@ def download_chunk(s, filename, priority, offset):
             os.remove(file_path)
         return 0
 
+progress_lock = threading.Lock()
+socket_lock = threading.Lock()
+active_downloads = 0
+progress_lines = {}
+
 class DownloadThread(threading.Thread):
-    def __init__(self, s, filename, priority, file_size, progress, index):
+    def __init__(self, s, filename, priority, file_size, download_id):
         super().__init__()
         self.s = s
         self.filename = filename
@@ -124,37 +130,48 @@ class DownloadThread(threading.Thread):
         self.file_size = file_size
         self.offset = 0
         self.done = threading.Event()
-        self.progress = progress
-        self.index = index
+        self.download_id = download_id
 
     def run(self):
+        global active_downloads
         file_path = os.path.join('output', self.filename)
         open(file_path, 'wb').close()  # Overwrite the file if it exists
 
         while not self.done.is_set():
-            chunk_size = download_chunk(self.s, self.filename, self.priority, self.offset)
+            with socket_lock:
+                chunk_size = download_chunk(self.s, self.filename, self.priority, self.offset)
             if chunk_size:
                 self.offset += chunk_size
                 percent_complete = (self.offset / self.file_size) * 100
-                self.progress[self.index] = f"Downloading {self.filename} .... {percent_complete:.2f}%"
-                self.print_progress()
+                self.print_progress(percent_complete)
                 if self.offset >= self.file_size:
                     self.done.set()
             else:
                 self.done.set()
 
-    def print_progress(self):
-        """Print the progress of all downloads."""
-        sys.stdout.write("\033[H\033[J")  # Clear the console
-        for progress in self.progress:
-            sys.stdout.write(progress + "\n")
-        sys.stdout.flush()
+        with progress_lock:
+            active_downloads -= 1
+            if active_downloads == 0:
+                print("\nAll downloads completed.")
+
+    def print_progress(self, percent_complete):
+        """Update the progress of this download."""
+        with progress_lock:
+            progress_lines[self.download_id] = f"Downloading {self.filename} .... {percent_complete:.2f}%"
+            update_progress_display()
+
+def update_progress_display():
+    """Update the entire progress display."""
+    sys.stdout.write("\033[H\033[J")  # Clear the entire screen
+    for i in sorted(progress_lines.keys()):
+        print(progress_lines[i])
+    sys.stdout.flush()
 
 def start_client():
-    """Start the client to download files from the server."""
-    # Ensure last_position.txt exists
-    if not os.path.exists('last_position.txt'):
-        set_last_position(0)
+    global active_downloads
+    last_check_time = time.time()
+    last_input_time = time.time()
+    last_position = get_last_position()
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         try:
@@ -165,30 +182,42 @@ def start_client():
                 return
 
             create_output_directory()
-            last_position = get_last_position()
-            append_filenames_to_input()
-            input_file_entries = read_filenames_from_input()[last_position:]
-            download_threads = []
-            progress = ["Downloading " + entry[0] + " .... 0.00%" for entry in input_file_entries]  # Initialize progress
 
-            for index, (filename, priority) in enumerate(input_file_entries):
-                filename = filename.strip()
-                priority = priority.strip()
-                file_size = files.get(filename, 0) * 1024 * 1024  # Convert MB to bytes
+            while True:
+                current_time = time.time()
 
-                if file_size == 0:
-                    logging.error("File size for %s is zero or file does not exist on the server.", filename)
-                    continue
+                if current_time - last_check_time >= 2:  # Check every 2 seconds
+                    input_file_entries = read_filenames_from_input()
+                    new_entries = input_file_entries[last_position:]
+                    if new_entries:
+                        threads = []
+                        for i, entry in enumerate(new_entries, start=1):
+                            filename, priority = entry
+                            filename = filename.strip()
+                            priority = priority.strip().upper()
+                            file_size = files.get(filename, 0) * 1024 * 1024
+                            if file_size == 0:
+                                logging.error("File size for %s is zero or file does not exist on the server.", filename)
+                                continue
+                            active_downloads += 1
+                            thread = DownloadThread(s, filename, priority, file_size, active_downloads)
+                            threads.append(thread)
+                            thread.start()
+                            last_position += 1
+                            set_last_position(last_position)
+                        
+                        # Wait for all threads to complete
+                        for thread in threads:
+                            thread.join()
 
-                thread = DownloadThread(s, filename, priority, file_size, progress, index)
-                thread.start()
-                download_threads.append(thread)
+                    last_check_time = current_time
 
-            for thread in download_threads:
-                thread.join()
+                if current_time - last_input_time >= 2:  # Allow user input every 2 seconds
+                    append_filenames_to_input()
+                    last_input_time = current_time
 
-            logging.info("All downloads completed.")
-            set_last_position(last_position + len(input_file_entries))
+                time.sleep(0.1)  # Sleep to avoid high CPU usage
+
         except socket.error as e:
             logging.error("Socket error: %s", e)
         except Exception as e:
