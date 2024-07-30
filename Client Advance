@@ -199,7 +199,8 @@ def start_client():
     last_check_time = time.time()
     last_input_time = time.time()
     last_position = get_last_position()
-
+    if not os.path.exists('last_position.txt'):
+        set_last_position(0)
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.connect((HOST, PORT))
